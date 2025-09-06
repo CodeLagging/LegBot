@@ -71,7 +71,7 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-@bot.command(name="help", description="Show available commands with pagination")
+@bot.command(name="help", description="Show available commands")
 async def help(ctx):
     pages = []
 
