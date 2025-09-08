@@ -1,5 +1,7 @@
 import discord
+import requests
 import os
+import re
 import ast
 import sys
 import asyncio
@@ -8,16 +10,14 @@ import threading
 import traceback
 import json
 import random
-
+import aiohttp
 from pydactyl import PterodactylClient
 from datetime import timedelta
 from dotenv import load_dotenv
 
 from discord.ext import commands
 from discord import app_commands, Embed, Interaction, ButtonStyle, SelectOption
-from discord.ui import View, Button
-from discord.ui import Select, View
-from discord.ui import Modal, TextInput, Select, Button, View
+from discord.ui import View, Button, Select
 
 # simple variables
 load_dotenv()
@@ -29,6 +29,132 @@ server_id = os.getenv("server_id")
 kb_api = PterodactylClient('https://control.katabump.com/', api_key=api_key)
 bot = commands.Bot(command_prefix='~', intents=discord.Intents.all())
 bot.remove_command("help")
+
+
+
+
+#############################################
+#-------------------------------------------#
+#          Verification System              #
+#-------------------------------------------#
+#############################################
+
+# ------------------------------
+# Data stores
+# ------------------------------
+active_challenges = {}   # keyed by discord_id
+verified_users = {}
+recent_sentences = []
+
+# Load sentences (expects sentences.json to contain {"sentences": [...]})
+with open("sentences.json", "r") as f:
+    SENTENCES = json.load(f)["sentences"]
+
+# ------------------------------
+# Helper functions
+# ------------------------------
+def get_user_about_me(username_or_id: str) -> str:
+    """
+    Fetch the "About Me" section of a Roblox user by username or user ID.
+    took me fking 2 hours to work this out
+    """
+
+    username_or_id = str(username_or_id).strip()
+
+    if username_or_id.isdigit():
+        user_id = int(username_or_id)
+    else:
+        user_info_url = "https://users.roblox.com/v1/usernames/users"
+        try:
+            response = requests.post(user_info_url, json={"usernames": [username_or_id]}, timeout=8)
+        except Exception as e:
+            return f"Error fetching user ID: {e}"
+        if response.status_code != 200:
+            return f"Error fetching user ID (status {response.status_code})"
+        user_data = response.json()
+        if not user_data.get("data") or len(user_data["data"]) == 0:
+            return "User not found."
+        user_id = user_data["data"][0]["id"]
+
+    about_me_url = f"https://users.roblox.com/v1/users/{user_id}"
+    try:
+        about_response = requests.get(about_me_url, timeout=8)
+    except Exception as e:
+        return f"Error fetching about me: {e}"
+
+    if about_response.status_code != 200:
+        return f"Error fetching about me (status {about_response.status_code})"
+    about_data = about_response.json()
+    return about_data.get("description", "No 'About Me' found.")
+
+def save_verified():
+    with open("verified.json", "w") as f:
+        json.dump(verified_users, f, indent=4)
+
+def pick_sentence() -> str:
+    """Pick a random sentence not used in last 3 minutes"""
+    global recent_sentences
+    while True:
+        sentence = random.choice(SENTENCES)
+        now = time.time()
+        recent_sentences = [s for s in recent_sentences if now - s[1] < 180]
+        if all(sentence != s[0] for s in recent_sentences):
+            recent_sentences.append((sentence, now))
+            return sentence
+
+# ------------------------------
+# UI View
+# ------------------------------
+
+class VerifyView(discord.ui.View):
+    def __init__(self, roblox_username: str, user: discord.User):
+        super().__init__(timeout=600)
+        self.roblox_username = roblox_username.strip()
+        self.user = user
+
+    @discord.ui.button(label="Renew", style=discord.ButtonStyle.secondary)
+    async def renew(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("back off, aint yours.", ephemeral=True)
+
+        sentence = pick_sentence()
+        active_challenges[self.user.id] = {"sentence": sentence, "roblox_username": self.roblox_username}
+        await interaction.response.edit_message(
+            content=f"✍️ New challenge:\n```{sentence}```\n\nPut this in your Roblox About Me, then press Verify.",
+            view=self
+        )
+
+    @discord.ui.button(label="Verify", style=discord.ButtonStyle.success)
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("back off, aint yours", ephemeral=True)
+
+        challenge = active_challenges.get(interaction.user.id)
+        if not challenge:
+            return await interaction.response.send_message("Hmm i didnt get that, try renewing.", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+        about_me = await asyncio.to_thread(get_user_about_me, self.roblox_username)
+
+        if about_me and challenge["sentence"] in about_me:
+            # use followup because we already deferred
+            await interaction.followup.send("✅ Verified!", ephemeral=True)
+
+            verified_users[self.roblox_username] = {
+                "time_verified": int(time.time()),
+                "discord_id": interaction.user.id,
+                "discord_name": str(interaction.user),
+                "sentence_used": challenge["sentence"]
+            }
+            save_verified()
+            del active_challenges[interaction.user.id]
+        else:
+            await interaction.followup.send(
+                f"I didnt get that, did you enter it properly?",
+                ephemeral=True
+            )
+
+
 
 
 class HelpView(View):
@@ -1007,6 +1133,24 @@ async def purge(ctx, amount: int = 10):
 #---------------------------------------#
 #########################################
 
+#########################
+#  Verification System  #
+#########################
+@bot.command()
+async def verify(ctx, roblox_username: str):
+    """Start Roblox verification (username or numeric id allowed)"""
+    roblox_username = roblox_username.strip()
+
+    sentence = pick_sentence()
+    active_challenges[ctx.author.id] = {"sentence": sentence, "roblox_username": roblox_username}
+    view = VerifyView(roblox_username, ctx.author)
+
+    await ctx.send(
+        f"👤 Verification for Roblox `{roblox_username}`\n\n"
+        f"✍️ Challenge:\n```{sentence}```\n\n"
+        "Put this in your Roblox About Me, then click Verify below.",
+        view=view
+    )
 
 
 ######################
@@ -1293,7 +1437,7 @@ async def on_ready():
                 print(f"Failed to edit restart message: {e}")
 
         os.remove("restart.json")
-
+    
     print(f"Logged in as {bot.user}")
 
 
