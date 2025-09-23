@@ -199,16 +199,16 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    role = 1418843923014619197
-    if any(role.id == role for role in message.author.roles):
+    TARGET_ROLE_ID = 1418843923014619197  # Your role ID
+
+    # Check if user has the target role
+    if any(r.id == TARGET_ROLE_ID for r in message.author.roles):
         try:
             # Timeout user for 2 seconds
             await message.author.timeout_for(datetime.timedelta(seconds=2), reason="Auto timeout")
             await message.channel.send(f"A bonehead... silence")
         except Exception as e:
-            await debug_log("Could not mute bonehead user...", "warn")
-
-    await bot.process_commands(message)
+            await debug_log("Could not mute bonehead", "warn")
 
 @bot.command(name="help", description="Show available commands")
 async def help(ctx):
