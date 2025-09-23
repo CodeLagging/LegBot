@@ -24,7 +24,7 @@ api_key = os.getenv("kb_key")
 authorized_user = [int(uid) for uid in os.getenv("authorized_user", "").split(",") if uid.strip().isdigit()]
 debug_channel = int(os.getenv("debug_channel"))
 server_id = os.getenv("server_id")
-
+Bonehead_Role = os.getenv("Bonehead_Role")
 kb_api = PterodactylClient('https://control.katabump.com/', api_key=api_key)
 bot = commands.Bot(command_prefix='~', intents=discord.Intents.all())
 bot.remove_command("help")
@@ -199,10 +199,10 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    TARGET_ROLE_ID = 1418843923014619197  # Your role ID
+    Bonehead_Role = 1418843923014619197  # Your role ID
 
     # Check if user has the target role
-    if any(r.id == TARGET_ROLE_ID for r in message.author.roles):
+    if any(r.id == Bonehead_Role for r in message.author.roles):
         try:
             # Timeout user for 2 seconds
             await message.author.timeout_for(datetime.timedelta(seconds=2), reason="Auto timeout")
