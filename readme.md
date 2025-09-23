@@ -1,7 +1,3 @@
-# Added and removed:
-## added new verification system linking roblox to discord
-#
-#
-#
-# to be added:
-## gamepass checking for donations from roblox
+# Update 9/23/2025:
+### -People with bonehead role now gets muted for 2s
+### still no gamepass checking. im lazy as f
