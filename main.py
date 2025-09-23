@@ -1,7 +1,6 @@
 import discord
 import requests
 import os
-import re
 import ast
 import sys
 import asyncio
@@ -10,7 +9,7 @@ import threading
 import traceback
 import json
 import random
-import aiohttp
+import datetime
 from pydactyl import PterodactylClient
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -195,7 +194,21 @@ async def on_message(message):
         await ctx.send("leave me alone bro")
 
     await bot.process_commands(message)
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
 
+    role = 1418843923014619197
+    if any(role.id == role for role in message.author.roles):
+        try:
+            # Timeout user for 2 seconds
+            await message.author.timeout_for(datetime.timedelta(seconds=2), reason="Auto timeout")
+            await message.channel.send(f"A bonehead... silence")
+        except Exception as e:
+            await debug_log("Could not mute bonehead user...", "warn")
+
+    await bot.process_commands(message)
 
 @bot.command(name="help", description="Show available commands")
 async def help(ctx):
